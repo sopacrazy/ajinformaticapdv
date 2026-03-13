@@ -1,0 +1,73 @@
+{
+  "name": "micro-erp-varejo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on tcp:3000 && electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "dist": "npm run electron:build"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "recharts": "^3.7.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react-joyride": "^2.0.5",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.23",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^40.0.0",
+    "electron-builder": "^26.4.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "wait-on": "^9.0.3"
+  },
+  "author": {
+    "name": "Sistema ERP",
+    "email": "suporte@microerp.com"
+  },
+  "description": "Sistema de PDV e Gestão Varejo",
+  "build": {
+    "appId": "com.microerp.varejo",
+    "productName": "MicroERP Varejo",
+    "copyright": "Copyright © 2026 Admin",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server.cjs",
+      "db.cjs",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "dist/icon.png",
+      "forceCodeSigning": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "allowToChangeInstallationDirectory": false
+    }
+  }
+}
