@@ -6,7 +6,7 @@ import {
   Save, Building2, CheckCircle2, Lock,
   Store, ShoppingBag, ShoppingCart, Package, Box, 
   CreditCard, Wallet, DollarSign, TrendingUp, Gift,
-  Users, UserPlus, Trash2, Edit2, Shield, Eye, EyeOff, X, Upload, FileText, Cloud
+  Users, UserPlus, Trash2, Edit2, Shield, Eye, EyeOff, X, Upload, FileText, Cloud, Check, RefreshCw
 } from 'lucide-react';
 
 const AVAILABLE_ICONS = [
@@ -59,35 +59,80 @@ const Settings: React.FC<{ user: UserType | null }> = ({ user }) => {
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300">
       <header>
-        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Configurações da Loja</h1>
-        <p className="text-gray-500 dark:text-gray-400">Personalize a identidade do seu sistema.</p>
+        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Configurações do Sistema</h1>
+        <p className="text-gray-500 dark:text-gray-400">Gerencie a identidade e usuários da sua empresa.</p>
       </header>
+
+      {/* Cloud Database Status Card */}
+      <div className="bg-gradient-to-br from-indigo-500/10 to-rose-500/10 dark:from-indigo-900/10 dark:to-rose-900/10 rounded-3xl border border-indigo-100 dark:border-indigo-900/20 p-8 flex items-center gap-6 shadow-sm overflow-hidden relative">
+         <div className="absolute right-0 top-0 w-32 h-32 bg-indigo-500/5 blur-3xl rounded-full"></div>
+         <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center shadow-lg transform rotate-3 shrink-0">
+             <Cloud className="text-indigo-600 animate-pulse" size={32} />
+         </div>
+         <div className="flex-1">
+             <h3 className="text-xl font-bold font-black text-slate-800 dark:text-white uppercase tracking-tighter">Banco de Dados Cloud</h3>
+             <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest leading-tight">
+               O sistema está conectado ao Supabase. Todas as alterações são salvas em tempo real na nuvem.
+             </p>
+         </div>
+         <div className="hidden md:block">
+            <span className="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border border-emerald-200 dark:border-emerald-800 flex items-center gap-2">
+               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div> Online
+            </span>
+         </div>
+      </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
           <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <Building2 className="text-indigo-600" size={24} /> Identidade Visual
+            <Building2 className="text-indigo-600" size={24} /> Identidade Visual & Empresa
           </h3>
         </div>
 
         <form onSubmit={handleSave} className="p-8 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-2">
-              <label className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Nome da Empresa</label>
-              <div className="relative">
-                <input 
-                  type="text" 
-                  value={settings.companyName}
-                  onChange={e => setSettings({...settings, companyName: e.target.value})}
-                  className="w-full p-4 pl-12 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: Minha Loja Varejo"
-                />
-                <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Nome da Empresa</label>
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={settings.companyName}
+                    onChange={e => setSettings({...settings, companyName: e.target.value})}
+                    className="w-full p-4 pl-12 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
+                    placeholder="Ex: Minha Loja Varejo"
+                  />
+                  <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Ícone ou Logo</label>
+                <div className="p-6 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 flex flex-col items-center gap-4">
+                  <div className="w-24 h-24 bg-white dark:bg-slate-800 rounded-3xl shadow-xl flex items-center justify-center overflow-hidden border border-slate-100 dark:border-slate-700">
+                    {settings.logoUrl?.startsWith('icon:') ? (
+                      (() => {
+                        const iconName = settings.logoUrl.split(':')[1];
+                        const iconObj = AVAILABLE_ICONS.find(i => i.name === iconName);
+                        const Icon = iconObj ? iconObj.icon : Package;
+                        return <Icon className="text-indigo-600 dark:text-indigo-400" size={48} />;
+                      })()
+                    ) : settings.logoUrl ? (
+                      <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
+                    ) : (
+                      <Package className="text-slate-200" size={48} />
+                    )}
+                  </div>
+                  <label className="bg-white dark:bg-slate-800 px-4 py-2 rounded-xl text-xs font-black text-slate-600 dark:text-slate-300 shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 transition-all flex items-center gap-2">
+                    <Upload size={14} /> CARREGAR IMAGEM
+                    <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                  </label>
+                </div>
               </div>
             </div>
 
             <div className="space-y-4">
-              <label className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Ícone da Loja</label>
+              <label className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Presets de Ícones</label>
               <div className="grid grid-cols-5 gap-3">
                 {AVAILABLE_ICONS.map((item) => {
                    const isSelected = settings.logoUrl === `icon:${item.name}`;
@@ -98,8 +143,8 @@ const Settings: React.FC<{ user: UserType | null }> = ({ user }) => {
                        onClick={() => handleIconSelect(item.name)}
                        className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all duration-200 ${
                          isSelected 
-                         ? 'border-indigo-600 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400' 
-                         : 'border-slate-100 dark:border-slate-700 text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
+                         ? 'border-indigo-600 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 shadow-md' 
+                         : 'border-slate-100 dark:border-slate-700 text-slate-400 hover:border-slate-200 dark:hover:border-slate-600'
                        }`}
                        title={item.label}
                      >
@@ -107,140 +152,86 @@ const Settings: React.FC<{ user: UserType | null }> = ({ user }) => {
                      </button>
                    );
                 })}
-                <label 
-                  className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 border-dashed transition-all duration-200 cursor-pointer ${
-                    settings.logoUrl && !settings.logoUrl.startsWith('icon:')
-                    ? 'border-indigo-600 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400'
-                    : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:border-indigo-500 hover:text-indigo-500'
-                  }`}
-                  title="Upload de Imagem"
-                >
-                  <Upload size={24} />
-                  <input 
-                    type="file" 
-                    className="hidden" 
-                    accept="image/*" 
-                    onChange={handleImageUpload} 
-                  />
-                </label>
               </div>
             </div>
           </div>
 
-          <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-900 flex items-center gap-4">
-             <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
-                {settings.logoUrl?.startsWith('icon:') ? (
-                  (() => {
-                    const iconName = settings.logoUrl.split(':')[1];
-                    const iconObj = AVAILABLE_ICONS.find(i => i.name === iconName);
-                    const Icon = iconObj ? iconObj.icon : Package;
-                    return <Icon className="text-indigo-600 dark:text-indigo-400" size={32} />;
-                  })()
-                ) : settings.logoUrl ? (
-                  <img src={settings.logoUrl} alt="Preview" className="w-10 h-10 object-contain" />
-                ) : (
-                  <Package className="text-gray-300" size={32} />
-                )}
-             </div>
-             <div className="flex-1">
-                <h4 className="font-bold text-indigo-900 dark:text-indigo-300">Prévia do Ícone</h4>
-                <p className="text-sm text-indigo-700/70 dark:text-indigo-400/70 mt-1">
-                  Este ícone será exibido no topo do menu lateral.
-                </p>
-             </div>
-          </div>
-
           <div className="pt-8 border-t border-gray-100 dark:border-gray-700">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-6">
-              <FileText className="text-indigo-600" size={24} /> Configuração do Recibo
+              <FileText className="text-indigo-600" size={24} /> Detalhes do Recibo & Contato
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Chave PIX</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Chave PIX</label>
                 <input 
                   type="text" 
                   value={settings.pixKey || ''}
                   onChange={e => setSettings({...settings, pixKey: e.target.value})}
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: 00.000.000/0001-00"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
                 />
               </div>
-
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Favorecido PIX</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Favorecido PIX</label>
                 <input 
                   type="text" 
                   value={settings.pixFavorecido || ''}
                   onChange={e => setSettings({...settings, pixFavorecido: e.target.value})}
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: Nome da Empresa"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
                 />
               </div>
-
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Nome para Assinatura</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Nome p/ Assinatura</label>
                 <input 
                   type="text" 
                   value={settings.signatureName || ''}
                   onChange={e => setSettings({...settings, signatureName: e.target.value})}
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: Responsável da Loja"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
                 />
               </div>
-
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">CNPJ</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">CNPJ</label>
                 <input 
                   type="text" 
                   value={settings.cnpj || ''}
                   onChange={e => setSettings({...settings, cnpj: e.target.value})}
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: 00.000.000/0001-00"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
                 />
               </div>
-
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Insc. Estadual</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Insc. Estadual</label>
                 <input 
                   type="text" 
                   value={settings.inscEst || ''}
                   onChange={e => setSettings({...settings, inscEst: e.target.value})}
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: 000.000.000-0"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
                 />
               </div>
-
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Telefone</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Telefone</label>
                 <input 
                   type="text" 
                   value={settings.phone || ''}
                   onChange={e => setSettings({...settings, phone: e.target.value})}
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: (00) 00000-0000"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
                 />
               </div>
-
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Email</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Email</label>
                 <input 
                   type="email" 
                   value={settings.email || ''}
                   onChange={e => setSettings({...settings, email: e.target.value})}
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: contato@empresa.com"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
                 />
               </div>
-
               <div className="space-y-2 md:col-span-2">
-                <label className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Endereço Completo</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Endereço Completo</label>
                 <input 
                   type="text" 
                   value={settings.address || ''}
                   onChange={e => setSettings({...settings, address: e.target.value})}
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
-                  placeholder="Ex: Rua Nome, nº 123, Bairro, Cidade - UF"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
                 />
               </div>
             </div>
@@ -250,7 +241,7 @@ const Settings: React.FC<{ user: UserType | null }> = ({ user }) => {
             {saved && (
               <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold animate-in fade-in slide-in-from-left-2">
                 <CheckCircle2 size={20} />
-                <span>Configurações salvas!</span>
+                <span>Configurações salvas na Nuvem!</span>
               </div>
             )}
             <button 
@@ -261,103 +252,6 @@ const Settings: React.FC<{ user: UserType | null }> = ({ user }) => {
             </button>
           </div>
         </form>
-      </div>
-
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden mb-8">
-         <div className="p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex justify-between items-center">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Cloud className="text-sky-500" size={24} /> Backup na Nuvem (Supabase)
-            </h3>
-         </div>
-         <div className="p-8">
-            <div className="flex items-center justify-between p-6 bg-sky-50 dark:bg-sky-900/10 border border-sky-100 dark:border-sky-900/20 rounded-2xl">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl shadow-sm flex items-center justify-center">
-                        <Cloud className="text-sky-500" size={28} />
-                    </div>
-                    <div>
-                        <h4 className="font-bold text-slate-800 dark:text-white text-lg">Status da Sincronização</h4>
-                        <div className="flex items-center gap-2 mt-1">
-                            {settings.lastBackupAt ? (
-                                <>
-                                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                                        Último backup realizado em: <span className="text-slate-900 dark:text-white font-bold">{settings.lastBackupAt}</span>
-                                    </p>
-                                </>
-                            ) : (
-                                <>
-                                    <span className="w-2 h-2 bg-amber-500 rounded-full" />
-                                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                                        O backup ainda não foi iniciado ou o servidor foi reiniciado.
-                                    </p>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div className="text-right">
-                    <span className="px-3 py-1 bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 text-xs font-black rounded-full uppercase tracking-tighter">
-                        Automático a cada 1 hora
-                    </span>
-                    <p className="text-[10px] text-slate-400 mt-2">Sincroniza todos os dados do SQLite para o Postgres na nuvem.</p>
-                </div>
-            </div>
-         </div>
-      </div>
-
-      {/* Maintenance Section */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden mb-8">
-         <div className="p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex justify-between items-center">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Building2 className="text-amber-500" size={24} /> Manutenção do Sistema
-            </h3>
-         </div>
-         <div className="p-8">
-            <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-2xl">
-                <div>
-                    <h4 className="font-bold text-slate-800 dark:text-white">Correção de Dados Fantasmas</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                        Use isso se você excluiu vendas no financeiro, mas elas continuam aparecendo nos relatórios.
-                    </p>
-                </div>
-                <button 
-                  onClick={async () => {
-                      if(window.confirm('Isso irá apagar vendas órfãs do banco de dados. Deseja continuar?')) {
-                          try {
-                              const res = await api.fixOrphans();
-                              alert(`Manutenção concluída! ${res.fixedCount} registros corrigidos.`);
-                          } catch (e) {
-                              alert('Erro ao executar manutenção.');
-                          }
-                      }
-                  }}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-amber-200 dark:shadow-none"
-                >
-                    CORRIGIR AGORA
-                </button>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 rounded-2xl mt-4">
-                <div>
-                    <h4 className="font-bold text-slate-800 dark:text-white">Reiniciar Tutorial</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                        Exibir o guia de boas-vindas novamente na próxima inicialização.
-                    </p>
-                </div>
-                <button 
-                  onClick={() => {
-                      localStorage.removeItem('tutorial_completed');
-                      if(confirm('Tutorial resetado! Deseja reiniciar o sistema agora para ver?')) {
-                          window.location.reload();
-                      }
-                  }}
-                  className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
-                >
-                    RESETAR TOUR
-                </button>
-            </div>
-         </div>
       </div>
 
       {/* User Management Section */}
@@ -458,32 +352,24 @@ const UserManagement: React.FC<{ currentUser: UserType | null }> = ({ currentUse
               password: '', 
               role: 'OPERATOR', 
               permissions: { 
-                dashboard: true,
-                pdv: true,
-                sales: true,
-                inventory: true,
-                clients: true,
-                suppliers: true,
-                materialShipment: true,
-                finance: true, 
-                reports: true, 
-                serviceOrders: true,
-                settings: false,
-                manageUsers: false 
+                dashboard: true, pdv: true, sales: true, inventory: false, 
+                clients: true, suppliers: false, materialShipment: false, 
+                finance: false, reports: false, serviceOrders: true, 
+                settings: false, manageUsers: false 
               } 
             });
             setIsModalOpen(true);
           }}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg shadow-indigo-100 dark:shadow-none"
         >
-          <UserPlus size={18} /> NOVO USUÁRIO
+          <UserPlus size={16} /> NOVO USUÁRIO
         </button>
       </div>
 
       <div className="p-8">
         {loading ? (
           <div className="flex justify-center p-12">
-            <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+            <RefreshCw className="animate-spin text-indigo-600" size={32} />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -557,7 +443,7 @@ const UserManagement: React.FC<{ currentUser: UserType | null }> = ({ currentUse
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 truncate">
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">
                       {editingUser?.id ? 'Senha (em branco mantém)' : 'Senha'}
                     </label>
                     <div className="relative">
@@ -601,68 +487,14 @@ const UserManagement: React.FC<{ currentUser: UserType | null }> = ({ currentUse
 
                 {editingUser?.role === 'OPERATOR' && (
                   <div className="space-y-4 bg-slate-50 dark:bg-slate-900/50 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-1">Permissões do Operador</label>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-1 text-center">Permissões Específicas</label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <PermissionToggle 
-                        label="Painel de Controle" 
-                        value={editingUser.permissions?.dashboard ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, dashboard: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="PDV Vendas" 
-                        value={editingUser.permissions?.pdv ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, pdv: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Histórico de Vendas" 
-                        value={editingUser.permissions?.sales ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, sales: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Ordens de Serviço" 
-                        value={editingUser.permissions?.serviceOrders ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, serviceOrders: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Financeiro" 
-                        value={editingUser.permissions?.finance ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, finance: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Estoque / Produtos" 
-                        value={editingUser.permissions?.inventory ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, inventory: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Clientes" 
-                        value={editingUser.permissions?.clients ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, clients: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Fornecedores" 
-                        value={editingUser.permissions?.suppliers ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, suppliers: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Saída de Material" 
-                        value={editingUser.permissions?.materialShipment ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, materialShipment: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Relatórios" 
-                        value={editingUser.permissions?.reports ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, reports: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Configurações (Empresa)" 
-                        value={editingUser.permissions?.settings ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, settings: v } })} 
-                      />
-                      <PermissionToggle 
-                        label="Gerenciar Usuários" 
-                        value={editingUser.permissions?.manageUsers ?? false} 
-                        onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, manageUsers: v } })} 
-                      />
+                      <PermissionToggle label="Dashboard" value={editingUser.permissions?.dashboard ?? false} onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, dashboard: v } })} />
+                      <PermissionToggle label="PDV" value={editingUser.permissions?.pdv ?? false} onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, pdv: v } })} />
+                      <PermissionToggle label="Vendas" value={editingUser.permissions?.sales ?? false} onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, sales: v } })} />
+                      <PermissionToggle label="Estoques" value={editingUser.permissions?.inventory ?? false} onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, inventory: v } })} />
+                      <PermissionToggle label="Ordens de Serviço" value={editingUser.permissions?.serviceOrders ?? false} onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, serviceOrders: v } })} />
+                      <PermissionToggle label="Financeiro" value={editingUser.permissions?.finance ?? false} onChange={v => setEditingUser({ ...editingUser, permissions: { ...editingUser.permissions!, finance: v } })} />
                     </div>
                   </div>
                 )}

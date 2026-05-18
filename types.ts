@@ -8,7 +8,8 @@ export enum TransactionType {
 export enum PaymentMethod {
   CASH = 'DINHEIRO',
   PIX = 'PIX',
-  CARD = 'CARTÃO'
+  CARD = 'CARTÃO',
+  BOLETO = 'BOLETO'
 }
 
 export enum FinanceType {
@@ -44,6 +45,7 @@ export interface Product {
   stock: number;
   minStock: number;
   category: string;
+  imageUrl?: string;
 }
 
 export interface Transaction {
@@ -56,7 +58,11 @@ export interface Transaction {
   total: number;
   paymentMethod?: PaymentMethod;
   clientName?: string;
+  osNumber?: string;
   createdAt: string;
+  installments?: number;
+  interval?: number;
+  discount?: number;
 }
 
 export interface FinanceRecord {
@@ -69,6 +75,8 @@ export interface FinanceRecord {
   createdAt: string;
   paymentMethod?: PaymentMethod;
   transactionId?: string;
+  category?: string;
+  discount?: number;
 }
 
 export interface DashboardStats {

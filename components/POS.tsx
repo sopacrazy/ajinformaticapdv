@@ -37,8 +37,8 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [amountPaid, setAmountPaid] = useState('');
-  const [discount, setDiscount] = useState('');
+  const [amountPaid, setAmountPaid] = useState<number>(0);
+  const [discount, setDiscount] = useState<number>(0);
   const [discountType, setDiscountType] = useState<'VALUE' | 'PERCENT'>('VALUE');
   const [posTab, setPosTab] = useState<'VENDAS' | 'ORÇAMENTOS' | 'OS'>('VENDAS');
   const [quotes, setQuotes] = useState<any[]>([]);
@@ -48,6 +48,9 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [showQuoteSuccess, setShowQuoteSuccess] = useState(false);
+  const [osNumberInProgress, setOsNumberInProgress] = useState<string | null>(null);
+  const [boletoInstallments, setBoletoInstallments] = useState('1');
+  const [boletoInterval, setBoletoInterval] = useState('30');
 
   useEffect(() => {
     api.getProducts().then(setProducts);
@@ -66,20 +69,20 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
     setQuotes(data);
   };
 
-  const total = cart.reduce((sum, item) => sum + ((item.salePrice - (item.discountPerItem || 0)) * item.quantity), 0);
+  const total = cart.reduce((sum, item) => sum + ((Number(item.salePrice || 0) - Number(item.discountPerItem || 0)) * item.quantity), 0);
   
   const finalTotal = useMemo(() => {
-    const discVal = parseFloat(discount.replace(',', '.') || '0');
+    const discVal = Number(discount) || 0;
     if (isNaN(discVal) || discVal < 0) return total;
     if (discountType === 'VALUE') return Math.max(0, total - discVal);
     return Math.max(0, total * (1 - discVal / 100));
   }, [total, discount, discountType]);
 
+  const paidVal = Number(amountPaid) || 0;
   const change = useMemo(() => {
-    const paid = parseFloat(amountPaid.replace(',', '.'));
-    if (isNaN(paid) || paid < finalTotal) return 0;
-    return paid - finalTotal;
-  }, [amountPaid, finalTotal]);
+    if (paidVal < finalTotal) return 0;
+    return paidVal - finalTotal;
+  }, [paidVal, finalTotal]);
   
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,31 +130,53 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
   };
 
   const formatCurrency = (val: number) => {
-    return `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    return `R$ ${Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
   };
 
   const handleFinishSale = async () => {
     if (cart.length === 0) return;
-    const commonTxId = Math.random().toString(36).substr(2, 9);
-    const transactions = cart.map(item => ({
-        id: commonTxId,
-        productId: item.id,
-        productName: item.name,
-        type: TransactionType.SALE,
-        quantity: item.quantity,
-        unitPrice: item.salePrice - (item.discountPerItem || 0),
-        total: (item.salePrice - (item.discountPerItem || 0)) * item.quantity,
-        paymentMethod,
-        clientName: clientName || 'Consumidor Final',
-        createdAt: new Date().toLocaleString('sv-SE').replace(' ', 'T'),
-    }));
+    const { nextNumber: saleNumber } = await api.getNextSaleNumber();
+    
+    const discVal = Number(discount) || 0;
+    let discountRatio = 1;
+    if (total > 0) {
+      if (discountType === 'VALUE') {
+        discountRatio = Math.max(0, total - discVal) / total;
+      } else {
+        discountRatio = Math.max(0, 1 - discVal / 100);
+      }
+    }
+
+    const transactions = cart.map(item => {
+        const itemSubtotal = (item.salePrice - (item.discountPerItem || 0)) * item.quantity;
+        const itemDiscountedTotal = itemSubtotal * discountRatio;
+        const itemDiscountedUnitPrice = itemDiscountedTotal / item.quantity;
+
+        return {
+            id: saleNumber,
+            productId: item.id,
+            productName: item.name,
+            type: TransactionType.SALE,
+            quantity: item.quantity,
+            unitPrice: itemDiscountedUnitPrice,
+            total: itemDiscountedTotal,
+            discount: (item.salePrice * item.quantity) - itemDiscountedTotal,
+            paymentMethod,
+            clientName: clientName || 'Consumidor Final',
+            osNumber: osNumberInProgress,
+            createdAt: new Date().toISOString(),
+            installments: paymentMethod === PaymentMethod.BOLETO ? parseInt(boletoInstallments) : 1,
+            interval: paymentMethod === PaymentMethod.BOLETO ? parseInt(boletoInterval) : 0,
+        };
+    });
     await api.addTransaction(transactions);
     for (const item of cart) {
         if (item.osId) await api.updateOSStatus(item.osId, 'CONCLUIDA');
     }
     setCart([]);
-    setAmountPaid('');
-    setDiscount('');
+    setAmountPaid(0);
+    setDiscount(0);
+    setOsNumberInProgress(null);
     setShowSuccess(true);
     api.getProducts().then(setProducts);
     loadServiceOrders();
@@ -161,7 +186,7 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
   const handleLoadOS = (os: any) => {
     const osItem: CartItem = {
       id: `OS-${os.number}`,
-      name: `Serviço OS #${os.number} - ${os.equipment}`,
+      name: `Serviço OS #${os.number} - ${os.equipment}${os.service_description ? ` (${os.service_description})` : ''}`,
       barcode: os.number,
       salePrice: os.total_cost,
       quantity: 1,
@@ -174,6 +199,7 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
     };
     setCart([osItem]);
     setClientName(os.client_name);
+    setOsNumberInProgress(os.number);
     setPosTab('VENDAS');
   };
 
@@ -229,8 +255,12 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
                         className="w-full flex items-center justify-between p-4 hover:bg-indigo-600/5 dark:hover:bg-slate-800/60 text-left border-b last:border-0 border-indigo-50/5 transition-all group"
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-indigo-600/10 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                            <Plus size={16} />
+                          <div className="w-12 h-12 bg-indigo-600/10 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all overflow-hidden shrink-0">
+                            {p.imageUrl ? (
+                              <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <Plus size={16} />
+                            )}
                           </div>
                           <div>
                             <p className="font-black text-sm text-slate-800 dark:text-white tracking-tight">{p.name}</p>
@@ -267,8 +297,17 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
                       {cart.map((item) => (
                         <div key={item.id} className="flex items-center justify-between p-4 bg-white/20 dark:bg-slate-900/30 rounded-2xl border border-white/5 hover:border-indigo-500/20 transition-all group relative">
                           <div className="flex items-center gap-4 flex-1 min-w-0">
-                            <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center font-black text-indigo-600 text-sm shrink-0">
-                              {item.quantity}
+                            <div className="relative shrink-0">
+                              <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center overflow-hidden border border-white/10 shadow-sm transition-transform group-hover:scale-105">
+                                {item.imageUrl ? (
+                                  <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <ShoppingCart size={24} className="text-slate-300" />
+                                )}
+                              </div>
+                              <div className="absolute -top-2 -right-2 w-7 h-7 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-black text-xs shadow-lg border-2 border-white dark:border-slate-900">
+                                {item.quantity}
+                              </div>
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="font-black text-sm text-slate-800 dark:text-gray-100 truncate tracking-tight">{item.name}</p>
@@ -391,7 +430,8 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
                     {[
                       { id: PaymentMethod.CASH, icon: <Banknote size={20} />, label: 'Dinheiro' },
                       { id: PaymentMethod.PIX, icon: <QrCode size={20} />, label: 'PIX' },
-                      { id: PaymentMethod.CARD, icon: <CreditCard size={20} />, label: 'Cartão' }
+                      { id: PaymentMethod.CARD, icon: <CreditCard size={20} />, label: 'Cartão' },
+                      { id: PaymentMethod.BOLETO, icon: <FileText size={20} />, label: 'Boleto' }
                     ].map(method => (
                       <PaymentBtn
                         key={method.id}
@@ -416,11 +456,18 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
                             <button onClick={() => setDiscountType('PERCENT')} className={`px-1.5 py-0.5 text-[8px] font-black rounded ${discountType === 'PERCENT' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500'}`}>%</button>
                          </div>
                          <input 
-                           type="number" 
-                           className="w-full text-right font-black text-rose-500 bg-transparent border-b border-rose-500/20 focus:border-rose-500 outline-none text-sm p-1"
-                           value={discount}
-                           onChange={e => setDiscount(e.target.value)}
-                         />
+                            type="text" 
+                            className="w-full text-right font-black text-rose-500 bg-transparent border-b border-rose-500/20 focus:border-rose-500 outline-none text-sm p-1"
+                            value={discountType === 'VALUE' ? discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : discount}
+                            onChange={e => {
+                              if (discountType === 'VALUE') {
+                                const val = e.target.value.replace(/\D/g, "");
+                                setDiscount(Number(val) / 100);
+                              } else {
+                                setDiscount(Number(e.target.value));
+                              }
+                            }}
+                          />
                       </div>
                     </div>
 
@@ -429,17 +476,55 @@ const POS: React.FC<POSProps> = ({ showValues }) => {
                       <span className={`text-[10px] font-black uppercase tracking-widest px-1 ${paymentMethod === PaymentMethod.CASH ? 'text-indigo-500' : 'text-slate-400'}`}>Recebido</span>
                       {paymentMethod === PaymentMethod.CASH ? (
                         <input 
-                          type="number" 
+                          type="text" 
                           placeholder="0,00"
                           className="w-full text-right bg-transparent font-black text-base outline-none text-slate-800 dark:text-white border-b-2 border-indigo-500/30 p-1"
-                          value={amountPaid}
-                          onChange={e => setAmountPaid(e.target.value)}
+                          value={amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          onChange={e => {
+                            const val = e.target.value.replace(/\D/g, "");
+                            setAmountPaid(Number(val) / 100);
+                          }}
                         />
                       ) : (
                         <div className="text-right font-black text-sm p-1">---</div>
                       )}
                     </div>
                   </div>
+
+                  {/* Boleto Installments & Interval - Shown conditional to Boleto */}
+                  {paymentMethod === PaymentMethod.BOLETO && (
+                    <div className="grid grid-cols-2 gap-2 animate-in slide-in-from-top-2 duration-300">
+                      <div className="bg-indigo-600/5 p-3 rounded-2xl border border-indigo-500/20 flex flex-col justify-center gap-1.5 transition-all">
+                        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest px-1">Nº Parcelas</span>
+                        <input 
+                          type="number" 
+                          min="1"
+                          className="w-full text-right bg-transparent font-black text-base outline-none text-indigo-600 border-b-2 border-indigo-500/30 p-1"
+                          value={boletoInstallments}
+                          onChange={e => setBoletoInstallments(e.target.value)}
+                        />
+                      </div>
+                      <div className="bg-indigo-600/5 p-3 rounded-2xl border border-indigo-500/20 flex flex-col justify-center gap-1.5 transition-all">
+                        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest px-1">Prazo (Dias)</span>
+                        <input 
+                          type="number" 
+                          min="0"
+                          step="1"
+                          placeholder="30"
+                          className="w-full text-right bg-transparent font-black text-base outline-none text-indigo-600 border-b-2 border-indigo-500/30 p-1"
+                          value={boletoInterval}
+                          onChange={e => setBoletoInterval(e.target.value)}
+                        />
+                      </div>
+                      {parseInt(boletoInstallments) > 1 && (
+                        <div className="col-span-2 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                          <p className="text-[9px] font-bold text-indigo-600 uppercase">
+                            {boletoInstallments}x de {formatCurrency(finalTotal / parseInt(boletoInstallments || '1'))}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Troco a devolver - Inline message */}
                   {paymentMethod === PaymentMethod.CASH && change > 0 && (

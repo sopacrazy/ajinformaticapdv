@@ -37,7 +37,7 @@ const Quotes: React.FC = () => {
     loadQuotes();
   };
 
-  const formatCurrency = (val: number) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+  const formatCurrency = (val: number) => `R$ ${Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
   const filteredQuotes = quotes.filter(q => {
     const matchSearch = q.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || q.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -65,24 +65,24 @@ const Quotes: React.FC = () => {
         <StatusCard 
             title="Total em Aberto" 
             count={quotes.filter(q => q.status === 'OPEN').length} 
-            value={formatCurrency(quotes.filter(q => q.status === 'OPEN').reduce((acc, q) => acc + q.total, 0))}
+            value={formatCurrency(quotes.filter(q => q.status === 'OPEN').reduce((acc, q) => acc + Number(q.total || 0), 0))}
             color="amber"
         />
         <StatusCard 
             title="Convertidos" 
             count={quotes.filter(q => q.status === 'CONVERTED').length} 
-            value={formatCurrency(quotes.filter(q => q.status === 'CONVERTED').reduce((acc, q) => acc + q.total, 0))}
+            value={formatCurrency(quotes.filter(q => q.status === 'CONVERTED').reduce((acc, q) => acc + Number(q.total || 0), 0))}
             color="emerald"
         />
         <StatusCard 
             title="Cancelados" 
             count={quotes.filter(q => q.status === 'CANCELLED').length} 
-            value={formatCurrency(quotes.filter(q => q.status === 'CANCELLED').reduce((acc, q) => acc + q.total, 0))}
+            value={formatCurrency(quotes.filter(q => q.status === 'CANCELLED').reduce((acc, q) => acc + Number(q.total || 0), 0))}
             color="rose"
         />
         <div className="bg-indigo-600 rounded-3xl p-6 text-white shadow-xl shadow-indigo-100 dark:shadow-none flex flex-col justify-center">
             <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Volume Total</p>
-            <p className="text-2xl font-black">{formatCurrency(quotes.reduce((acc, q) => acc + q.total, 0))}</p>
+            <p className="text-2xl font-black">{formatCurrency(quotes.reduce((acc, q) => acc + Number(q.total || 0), 0))}</p>
         </div>
       </div>
 

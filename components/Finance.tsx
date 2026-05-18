@@ -12,7 +12,7 @@ interface FinanceProps {
 }
 
 import { api } from '../services/api';
-// ... other imports
+import { formatLocalDate, getTodayStr, formatLocalTime } from '../services/dateUtils';
 
 const Finance: React.FC<FinanceProps> = ({ showValues }) => {
   const [records, setRecords] = useState<FinanceRecord[]>([]);
@@ -23,28 +23,48 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newEntry, setNewEntry] = useState({
     description: '',
+    category: '',
     amount: '',
     type: FinanceType.PAYABLE,
-    dueDate: new Date().toISOString().split('T')[0]
+    dueDate: getTodayStr(),
+    clientName: '',
+    paymentMethod: PaymentMethod.CASH
   });
+
+  const [categories, setCategories] = useState<string[]>(['Mat. Limpeza', 'Gratificação', 'Combustível moto', 'Combustível Pulse', 'Combustível Titano', 'Mat. Expediente']);
+  const [showNewCatInput, setShowNewCatInput] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  
+  const [clients, setClients] = useState<any[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
 
   useEffect(() => {
     loadFinance();
+    api.getClients().then(setClients);
   }, []);
 
   const loadFinance = async () => {
-    const data = await api.getFinance();
-    setRecords(data);
+    try {
+      const data = await api.getFinance();
+      setRecords(data);
+      
+      // Use only the specific requested categories
+      const allCats = ['Mat. Limpeza', 'Gratificação', 'Combustível moto', 'Combustível Pulse', 'Combustível Titano', 'Mat. Expediente'];
+      setCategories(allCats);
+    } catch (err) {
+      console.error('Error loading finance:', err);
+    }
   };
 
   const totals = useMemo(() => {
     const receivable = records
       .filter(r => r.type === FinanceType.RECEIVABLE && r.status === FinanceStatus.PAID)
-      .reduce((sum, r) => sum + r.amount, 0);
+      .reduce((sum, r) => sum + Number(r.amount || 0), 0);
     
     const payable = records
       .filter(r => r.type === FinanceType.PAYABLE && r.status === FinanceStatus.PAID)
-      .reduce((sum, r) => sum + r.amount, 0);
+      .reduce((sum, r) => sum + Number(r.amount || 0), 0);
 
     return { receivable, payable, balance: receivable - payable };
   }, [records]);
@@ -59,7 +79,7 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
     
     let dateMatch = true;
     if (dateFilter === 'TODAY') {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getTodayStr();
       const recordDate = r.dueDate.split('T')[0];
       dateMatch = recordDate === today;
     }
@@ -74,7 +94,7 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
     // If we're calling this for display in a sensitive area and showValues is false, we should return masked value
     // But formatCurrency is a utility. Let's handle masking at render time or inside here if we change signature.
     // For simplicity given the existing code structure, I will return the string and mask in JSX or here.
-    return `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    return `R$ ${Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
   };
   
   // Helper for masking
@@ -88,23 +108,43 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
     setCurrentPage(1);
   }, [filter, statusFilter, dateFilter]);
 
-  const handleAddEntry = async () => {
+  const handleAddEntry = async (status: FinanceStatus = FinanceStatus.PENDING) => {
     if (!newEntry.description || !newEntry.amount) return;
-    const record: FinanceRecord = {
+    const record: FinanceRecord & { category?: string, client_name?: string } = {
       id: Math.random().toString(36).substr(2, 9),
       type: newEntry.type,
       description: newEntry.description,
+      category: newEntry.category,
       amount: Number(newEntry.amount),
-      status: FinanceStatus.PENDING,
+      status: status,
       dueDate: newEntry.dueDate,
+      paymentMethod: newEntry.paymentMethod,
       createdAt: new Date().toISOString(),
+      // Adding it directly to the description or a separate field if we had it
+      // For now, let's append it to description or use a custom property
     };
+    
+    // We'll append client to description for better visibility
+    if (newEntry.clientName) {
+        record.description = `${record.description} (Cliente: ${newEntry.clientName})`;
+    }
     
     await api.addFinance(record);
     loadFinance();
     setShowAddModal(false);
-    setNewEntry({ description: '', amount: '', type: FinanceType.PAYABLE, dueDate: new Date().toISOString().split('T')[0] });
+    setNewEntry({ 
+        description: '', 
+        category: '', 
+        amount: '', 
+        type: FinanceType.PAYABLE, 
+        dueDate: getTodayStr(),
+        clientName: '',
+        paymentMethod: PaymentMethod.CASH
+    });
+    setClientSearch('');
+    setShowNewCatInput(false);
   };
+   // ... (lines truncated)
 
   const handleSettle = async (id: string) => {
     await api.updateFinanceStatus(id, FinanceStatus.PAID);
@@ -146,9 +186,7 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
       setLinkedItems([]);
       return;
     }
-    api.getTransactions().then(txs => {
-      setLinkedItems(txs.filter(t => t.id === selectedRecord.transactionId));
-    });
+    api.getTransactionsBySale(selectedRecord.transactionId).then(setLinkedItems);
   }, [selectedRecord]);
 
   return (
@@ -273,13 +311,15 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
                     <div className="flex items-center gap-3">
                       <div className={`w-2 h-2 rounded-full ${r.type === FinanceType.RECEIVABLE ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                       <div>
-                        <p className="font-bold text-gray-800 dark:text-gray-100 group-hover:text-indigo-600 transition-colors">{r.description}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-gray-800 dark:text-gray-100 group-hover:text-indigo-600 transition-colors">{r.category ? `[${r.category}] ` : ''}{r.description}</p>
+                        </div>
                         <p className="text-xs text-gray-400 font-medium">{r.type === FinanceType.RECEIVABLE ? 'Entrada' : 'Saída'}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-8 py-5 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {new Date(r.dueDate).toLocaleDateString('pt-BR')}
+                    {formatLocalDate(r.dueDate)}
                   </td>
                   <td className={`px-8 py-5 font-black ${r.type === FinanceType.RECEIVABLE ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                     {displayValue(r.amount)}
@@ -333,7 +373,7 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
       {/* Modal - Novo Lançamento */}
       {showAddModal && (
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in duration-200">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in duration-200">
             <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
               <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Novo Lançamento</h3>
               <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><X /></button>
@@ -362,15 +402,106 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
                   onChange={e => setNewEntry({...newEntry, description: e.target.value})}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              {newEntry.type === FinanceType.PAYABLE && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Custo / Tipo de Saída</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {categories.map(cat => (
+                      <button 
+                         key={cat}
+                         onClick={() => setNewEntry({...newEntry, category: cat})}
+                         className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${newEntry.category === cat ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-100 dark:border-gray-700 text-gray-400'}`}
+                      >
+                         {cat}
+                      </button>
+                    ))}
+                    <button 
+                      onClick={() => setShowNewCatInput(!showNewCatInput)}
+                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 border-dashed ${showNewCatInput ? 'border-indigo-500 text-indigo-500' : 'border-gray-300 text-gray-400'}`}
+                    >
+                      + Novo
+                    </button>
+                  </div>
+                  
+                  {showNewCatInput && (
+                    <div className="flex gap-2 animate-in slide-in-from-top-2 duration-200">
+                      <input 
+                         type="text"
+                         placeholder="Nome da Categoria..."
+                         className="flex-1 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm"
+                         value={newCatName}
+                         onChange={e => setNewCatName(e.target.value)}
+                      />
+                      <button 
+                        onClick={() => {
+                          if (newCatName.trim()) {
+                            setCategories(prev => Array.from(new Set([...prev, newCatName.trim()])));
+                            setNewEntry({...newEntry, category: newCatName.trim()});
+                            setNewCatName('');
+                            setShowNewCatInput(false);
+                          }
+                        }}
+                        className="px-4 bg-indigo-600 text-white rounded-xl font-bold text-xs"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Vincular Cliente (Opcional)</label>
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    placeholder="Pesquisar cliente..."
+                    className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                    value={newEntry.clientName || clientSearch}
+                    onChange={e => {
+                      setClientSearch(e.target.value);
+                      setNewEntry({...newEntry, clientName: e.target.value});
+                      setShowClientDropdown(true);
+                    }}
+                    onFocus={() => setShowClientDropdown(true)}
+                  />
+                  {showClientDropdown && clientSearch.length > 1 && (
+                    <div className="absolute top-full left-0 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl mt-1 shadow-xl z-50 max-h-48 overflow-y-auto">
+                      {clients
+                        .filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()))
+                        .map(c => (
+                          <button
+                            key={c.id}
+                            className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm font-bold border-b border-slate-100 dark:border-slate-700 last:border-0"
+                            onClick={() => {
+                              setNewEntry({...newEntry, clientName: c.name});
+                              setClientSearch(c.name);
+                              setShowClientDropdown(false);
+                            }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Valor (R$)</label>
-                  <input 
-                    type="number" 
-                    className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={newEntry.amount}
-                    onChange={e => setNewEntry({...newEntry, amount: e.target.value})}
-                  />
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">R$</span>
+                    <input 
+                      type="text" 
+                      className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold"
+                      value={formatCurrency(Number(newEntry.amount) || 0).replace('R$', '').trim()}
+                      onChange={e => {
+                        const value = e.target.value.replace(/\D/g, "");
+                        setNewEntry({...newEntry, amount: (Number(value) / 100) as any});
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Vencimento</label>
@@ -381,13 +512,34 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
                     onChange={e => setNewEntry({...newEntry, dueDate: e.target.value})}
                   />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Forma Pgto</label>
+                  <select 
+                    className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold"
+                    value={newEntry.paymentMethod}
+                    onChange={e => setNewEntry({...newEntry, paymentMethod: e.target.value as any})}
+                  >
+                    <option value={PaymentMethod.CASH}>Dinheiro</option>
+                    <option value={PaymentMethod.PIX}>PIX</option>
+                    <option value={PaymentMethod.CARD}>Cartão</option>
+                    <option value={PaymentMethod.BOLETO}>Boleto</option>
+                  </select>
+                </div>
               </div>
             </div>
-            <div className="p-6 bg-gray-50 dark:bg-gray-700/50 flex flex-col gap-3">
+            <div className="p-6 bg-gray-50 dark:bg-gray-700/50 flex flex-col md:flex-row gap-3">
               <button 
-                onClick={handleAddEntry}
-                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 dark:shadow-none transition-all"
-              >SALVAR REGISTRO</button>
+                onClick={() => handleAddEntry(FinanceStatus.PAID)}
+                className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black shadow-xl shadow-emerald-100 dark:shadow-none transition-all flex items-center justify-center gap-2"
+              >
+                <CheckCircle size={20} /> PAGO
+              </button>
+              <button 
+                onClick={() => handleAddEntry(FinanceStatus.PENDING)}
+                className="flex-1 py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black shadow-xl shadow-amber-100 dark:shadow-none transition-all flex items-center justify-center gap-2"
+              >
+                <Calendar size={20} /> AGENDAR
+              </button>
             </div>
           </div>
         </div>
@@ -417,14 +569,15 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
 
             <div className="p-8 space-y-8">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                <InfoItem icon={<Clock size={16} />} label="Data/Hora" value={new Date(selectedRecord.createdAt).toLocaleString('pt-BR')} />
+                <InfoItem icon={<Clock size={16} />} label="Data/Hora" value={`${formatLocalDate(selectedRecord.createdAt)} ${formatLocalTime(selectedRecord.createdAt)}`} />
                 <InfoItem icon={<Hash size={16} />} label="Venda Ref." value={selectedRecord.transactionId ? `#${selectedRecord.transactionId.substr(0, 8)}` : 'Manual'} />
                 <InfoItem 
                   icon={getMethodIcon(selectedRecord.paymentMethod) || <DollarSign size={16} />} 
                   label="Pagamento" 
                   value={selectedRecord.paymentMethod || 'N/A'} 
                 />
-                <InfoItem icon={<User size={16} />} label="Cliente" value="Consumidor Final" />
+                <InfoItem icon={<User size={16} />} label="Categoria" value={selectedRecord.category || 'N/A'} />
+                <InfoItem icon={<User size={16} />} label="Cliente" value={linkedItems[0]?.clientName || 'Consumidor Final'} />
               </div>
 
               {linkedItems.length > 0 && (
@@ -447,14 +600,22 @@ const Finance: React.FC<FinanceProps> = ({ showValues }) => {
               )}
 
               <div className="pt-6 border-t border-gray-100 dark:border-gray-700 flex justify-between items-end">
-                <div>
-                  <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">Status Atual</p>
-                  <span className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest ${
-                    selectedRecord.status === FinanceStatus.PAID ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
-                  }`}>{selectedRecord.status === FinanceStatus.PAID ? 'PAGO' : 'PENDENTE'}</span>
+                <div className="flex items-center gap-10">
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">Status Atual</p>
+                    <span className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest ${
+                      selectedRecord.status === FinanceStatus.PAID ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+                    }`}>{selectedRecord.status === FinanceStatus.PAID ? 'PAGO' : 'PENDENTE'}</span>
+                  </div>
+                  {selectedRecord.discount > 0 && (
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Desconto Aplicado</span>
+                      <span className="text-xl font-black text-rose-500 tracking-tighter">-{formatCurrency(selectedRecord.discount)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
-                  <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">Valor Total</p>
+                  <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">Total Liquidado</p>
                   <p className={`text-4xl font-black ${selectedRecord.type === FinanceType.RECEIVABLE ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                     {formatCurrency(selectedRecord.amount)}
                   </p>

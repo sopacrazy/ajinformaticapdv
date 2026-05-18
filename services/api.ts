@@ -30,14 +30,23 @@ export const api = {
     },
 
     // Transactions (Sales)
-    getTransactions: async (today?: boolean): Promise<Transaction[]> => {
-        const url = today ? `${API_URL}/transactions?today=true` : `${API_URL}/transactions`;
+    getTransactions: async (today?: boolean, startDate?: string, endDate?: string): Promise<Transaction[]> => {
+        let url = `${API_URL}/transactions`;
+        const params = new URLSearchParams();
+        if (today) params.append('today', 'true');
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        
+        if (params.toString()) url += `?${params.toString()}`;
+        
         const res = await fetch(url);
         return res.json();
     },
     getTodaySales: async (): Promise<Transaction[]> => {
-        const res = await fetch(`${API_URL}/transactions?today=true`);
-        return res.json();
+        return api.getTransactions(true);
+    },
+    getSalesByPeriod: async (startDate: string, endDate: string): Promise<Transaction[]> => {
+        return api.getTransactions(false, startDate, endDate);
     },
     addTransaction: async (tx: Transaction | Transaction[]) => {
         await fetch(`${API_URL}/transactions`, {
@@ -45,6 +54,22 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(tx),
         });
+    },
+    getTransactionsBySale: async (saleId: string): Promise<Transaction[]> => {
+        const res = await fetch(`${API_URL}/transactions/sale/${saleId}`);
+        return res.json();
+    },
+    getNextSaleNumber: async (): Promise<{nextNumber: string}> => {
+        const res = await fetch(`${API_URL}/transactions/next-number`);
+        return res.json();
+    },
+    updateSale: async (id: string, data: { clientName: string, paymentMethod: string, createdAt: string, items: Transaction[], installments?: number, interval?: number }) => {
+        const res = await fetch(`${API_URL}/transactions/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        return res.json();
     },
 
     // Finance
@@ -65,6 +90,14 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status }),
         });
+    },
+    updateFinanceCategory: async (id: string, category: string) => {
+        const res = await fetch(`${API_URL}/finance/${id}/category`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category }),
+        });
+        if (!res.ok) throw new Error('Falha ao atualizar categoria financeira');
     },
     deleteFinance: async (id: string) => {
         await fetch(`${API_URL}/finance/${id}`, {
@@ -259,6 +292,42 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(shipment),
         });
+        return res.json();
+    },
+    deleteShipment: async (id: string) => {
+        const res = await fetch(`${API_URL}/shipments/${id}`, { method: 'DELETE' });
+        return res.json();
+    },
+    returnShipment: async (id: string) => {
+        const res = await fetch(`${API_URL}/shipments/${id}/return`, { method: 'PUT' });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Falha ao devolver empréstimo');
+        }
+        return res.json();
+    },
+
+    // Backup
+    getBackupStatus: async (): Promise<{isBackupEnabled: boolean}> => {
+        const res = await fetch(`${API_URL}/backup/status`);
+        return res.json();
+    },
+    toggleBackup: async (enabled: boolean) => {
+        const res = await fetch(`${API_URL}/backup/toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        return res.json();
+    },
+    runBackup: async () => {
+        const res = await fetch(`${API_URL}/backup/run`, {
+            method: 'POST'
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Falha ao executar backup');
+        }
         return res.json();
     }
 };

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Plus, Search, Edit, Trash2, X, Phone, MapPin, Mail, FileText, ArrowRight } from 'lucide-react';
 import { api } from '../services/api';
+import ConfirmModal from './ConfirmModal';
 
 const Clients: React.FC = () => {
   const [clients, setClients] = useState<any[]>([]);
@@ -11,6 +12,7 @@ const Clients: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '', cpf_cnpj: '', email: '', phone: '', address: ''
   });
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
     loadClients();
@@ -54,11 +56,15 @@ const Clients: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Deseja excluir este cliente?')) {
-      await api.deleteClient(id);
-      loadClients();
-    }
+  const handleDelete = (id: number) => {
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!confirmDeleteId) return;
+    await api.deleteClient(confirmDeleteId);
+    setConfirmDeleteId(null);
+    loadClients();
   };
 
   return (
@@ -263,6 +269,14 @@ const Clients: React.FC = () => {
           </div>
         </div>
       )}
+      <ConfirmModal 
+        isOpen={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={confirmDelete}
+        title="Excluir Cliente?"
+        message="Tem certeza que deseja remover este cliente? Esta ação não pode ser desfeita e dados históricos vinculados podem ser afetados."
+        confirmText="Sim, Remover"
+      />
     </div>
   );
 };

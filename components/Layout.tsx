@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { StoreSettings, User as UserType } from '../types';
-import { Onboarding } from './Onboarding';
 import StatusBar from './StatusBar';
 
 interface LayoutProps {
@@ -47,6 +46,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLo
     return false;
   });
   const [isCadastroOpen, setIsCadastroOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   useEffect(() => {
     const updateSettings = () => {
@@ -58,17 +58,22 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLo
   }, []);
 
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.user-menu-container')) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     if (settings.companyName) {
       document.title = settings.companyName;
     }
   }, [settings.companyName]);
 
-  useEffect(() => {
-    const tutorialSeen = localStorage.getItem('tutorial_completed');
-    if (!tutorialSeen) {
-      setTimeout(() => setRunTour(true), 1000);
-    }
-  }, []);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -127,7 +132,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLo
 
   return (
     <div className={`min-h-screen flex transition-colors duration-500 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'} print:bg-white print:block`}>
-      <Onboarding run={runTour} onFinish={handleTourFinish} setTab={setActiveTab} />
 
       {/* Sidebar */}
       <aside 
@@ -136,16 +140,16 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLo
         } bg-white dark:bg-slate-900 border-r border-slate-200/60 dark:border-slate-800/60 transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] sticky top-0 h-screen z-50 flex flex-col shadow-[20px_0_40px_-15px_rgba(0,0,0,0.03)] dark:shadow-none print:hidden`}
       >
         {/* Branding Area */}
-        <div className={`p-6 flex flex-col items-center ${isSidebarOpen ? 'justify-center gap-4' : 'justify-center'} min-h-[160px] relative border-b border-slate-100 dark:border-slate-800/60 mb-4`}>
+        <div className={`p-4 flex flex-col items-center ${isSidebarOpen ? 'justify-center gap-2' : 'justify-center'} min-h-[110px] relative border-b border-slate-100 dark:border-slate-800/60 mb-2`}>
           {isSidebarOpen && (
-            <div className="flex flex-col items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 w-full">
+            <div className="flex flex-col items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-500 w-full">
               <div className="relative group">
                 <div className="relative flex items-center justify-center p-1">
                   {(() => {
                     const logoUrl = settings.logoUrl || '';
                     if (logoUrl.startsWith('icon:')) {
                       const IconName = logoUrl.split(':')[1];
-                      const iconSize = 48;
+                      const iconSize = 40;
                       switch(IconName) {
                         case 'Store': return <Store size={iconSize} className="text-indigo-600 dark:text-white" />;
                         case 'ShoppingBag': return <ShoppingBag size={iconSize} className="text-indigo-600 dark:text-white" />;
@@ -160,18 +164,21 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLo
                         default: return <Package size={iconSize} className="text-indigo-600 dark:text-white" />;
                       }
                     } else if (logoUrl) {
-                      return <img src={logoUrl} alt="Logo" className="w-[84px] h-[84px] object-contain drop-shadow-sm" />;
+                      // Adjusting for "large" and "wide" logo
+                      const isDefaultLogo = logoUrl === '/logo.png' || logoUrl.includes('logo.png');
+                      return (
+                        <img 
+                          src={logoUrl} 
+                          alt="Logo" 
+                          className={`${isDefaultLogo ? 'w-full px-2' : 'w-[180px]'} h-auto max-h-[80px] object-contain drop-shadow-sm transition-all duration-500`} 
+                        />
+                      );
                     }
-                    return <Package size={48} className="text-indigo-600 dark:text-white" />;
+                    return <Package size={40} className="text-indigo-600 dark:text-white" />;
                   })()}
                 </div>
               </div>
-              <div className="flex flex-col items-center text-center px-4 w-full">
-                <span className="text-lg font-black text-slate-800 dark:text-white tracking-tighter leading-tight break-words max-w-full">
-                  {settings.companyName || 'AJ PDV'}
-                </span>
-                <span className="text-[10px] uppercase tracking-widest font-bold text-indigo-500/80 leading-none mt-1">Sistema ERP</span>
-              </div>
+
             </div>
           )}
           {!isSidebarOpen && (
@@ -267,60 +274,66 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLo
 
         {/* Footer Area */}
         <div className="p-4 pb-12 space-y-2 border-t border-slate-100 dark:border-slate-800/80">
-          <div className="grid grid-cols-1 gap-1 mb-2">
-            {(user?.role === 'ADMIN' || user?.permissions.settings) && (
-              <button 
-                onClick={() => setActiveTab('settings')}
-                className={`flex items-center p-3 rounded-xl transition-all duration-300 ${
-                  activeTab === 'settings' 
-                  ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' 
-                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                } ${!isSidebarOpen && 'justify-center'}`}
-              >
-                <SettingsIcon size={20} className={activeTab === 'settings' ? 'animate-spin-slow' : ''} />
-                {isSidebarOpen && <span className="ml-3 text-xs font-bold">Configurações</span>}
-              </button>
-            )}
-            
-            <button 
-              onClick={() => setDarkMode(!darkMode)}
-              className={`flex items-center p-3 rounded-xl transition-all duration-300 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${!isSidebarOpen && 'justify-center'}`}
-            >
-              {darkMode ? <Sun size={20} className="text-amber-400" /> : <Moon size={20} className="text-indigo-400" />}
-              {isSidebarOpen && <span className="ml-3 text-xs font-bold">{darkMode ? 'Modo Claro' : 'Modo Escuro'}</span>}
-            </button>
+          {/* User Menu Container */}
+          <div className="relative user-menu-container">
+            {/* Context Menu Popup */}
+            {isUserMenuOpen && (
+              <div className={`absolute bottom-full left-0 ${isSidebarOpen ? 'w-full' : 'w-48'} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] mb-3 p-1.5 animate-in fade-in slide-in-from-bottom-2 duration-300 z-[100]`}>
+                {(user?.role === 'ADMIN' || user?.permissions.settings) && (
+                  <button 
+                    onClick={() => { setActiveTab('settings'); setIsUserMenuOpen(false); }}
+                    className="w-full flex items-center p-3 rounded-xl transition-all duration-300 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 group"
+                  >
+                    <SettingsIcon size={18} className="group-hover:rotate-90 transition-transform duration-500" />
+                    <span className="ml-3 text-xs font-bold">Configurações</span>
+                  </button>
+                )}
+                
+                <button 
+                  onClick={() => { setDarkMode(!darkMode); }}
+                  className="w-full flex items-center p-3 rounded-xl transition-all duration-300 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                >
+                  {darkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-indigo-400" />}
+                  <span className="ml-3 text-xs font-bold">{darkMode ? 'Modo Claro' : 'Modo Escuro'}</span>
+                </button>
 
-            {!isSidebarOpen && (
+                <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5" />
+
+                <button 
+                  onClick={onLogout}
+                  className="w-full flex items-center p-3 rounded-xl transition-all duration-300 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                >
+                  <LogOut size={18} />
+                  <span className="ml-3 text-xs font-bold">Sair do Sistema</span>
+                </button>
+              </div>
+            )}
+
+            {/* Main User Capsule */}
+            {user && (
               <button 
-                onClick={onLogout}
-                className="flex items-center p-3 rounded-xl transition-all duration-300 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 justify-center"
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className={`w-full px-3 py-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-between border border-slate-100/50 dark:border-slate-700/50 group/user transition-all hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm ${!isSidebarOpen && 'justify-center'}`}
               >
-                <LogOut size={20} />
+                <div className="flex items-center gap-3 truncate">
+                  <div className="w-9 h-9 bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-900/40 dark:to-violet-900/40 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 font-black text-xs shadow-inner">
+                    {user.username.charAt(0).toUpperCase()}
+                  </div>
+                  {isSidebarOpen && (
+                    <div className="flex-1 truncate text-left">
+                      <p className="text-xs font-black text-slate-800 dark:text-white truncate">{user.username}</p>
+                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">{user.role}</p>
+                    </div>
+                  )}
+                </div>
+                {isSidebarOpen && (
+                  <div className={`transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180' : ''}`}>
+                    <ChevronRight size={14} className="text-slate-300 -rotate-90" />
+                  </div>
+                )}
               </button>
             )}
           </div>
-
-          {/* User Info Capsule */}
-          {isSidebarOpen && user && (
-            <div className="px-3 py-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-between border border-slate-100/50 dark:border-slate-700/50 group/user">
-              <div className="flex items-center gap-3 truncate flex-1">
-                <div className="w-9 h-9 bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-900/40 dark:to-violet-900/40 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 font-black text-xs">
-                  {user.username.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 truncate">
-                  <p className="text-xs font-black text-slate-800 dark:text-white truncate">{user.username}</p>
-                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">{user.role}</p>
-                </div>
-              </div>
-              <button 
-                onClick={onLogout}
-                title="Sair do sistema"
-                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all"
-              >
-                <LogOut size={18} />
-              </button>
-            </div>
-          )}
         </div>
       </aside>
 

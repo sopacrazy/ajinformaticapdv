@@ -4,6 +4,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TransactionType, FinanceType, FinanceStatus } from '../types';
 import { api } from '../services/api';
 import { Product, Transaction, FinanceRecord } from '../types';
+import { getTodayStr, formatLocalDate } from '../services/dateUtils';
+import SupportChat from './SupportChat';
 
 interface DashboardProps {
   showValues: boolean;
@@ -36,19 +38,19 @@ const Dashboard: React.FC<DashboardProps> = ({ showValues, togglePrivacy }) => {
   }, []);
 
   const stats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr();
     const todaySales = transactions
       .filter(tx => tx.createdAt.startsWith(today) && tx.type === TransactionType.SALE)
-      .reduce((sum, tx) => sum + tx.total, 0);
+      .reduce((sum, tx) => sum + Number(tx.total || 0), 0);
 
     const totalCash = finance
       .filter(f => f.status === FinanceStatus.PAID)
-      .reduce((sum, f) => f.type === FinanceType.RECEIVABLE ? sum + f.amount : sum - f.amount, 0);
+      .reduce((sum, f) => f.type === FinanceType.RECEIVABLE ? sum + Number(f.amount || 0) : sum - Number(f.amount || 0), 0);
 
     const lowStockItems = products.filter(p => p.stock <= (p.minStock || 5)).length;
     const pendingPayables = finance
       .filter(f => f.type === FinanceType.PAYABLE && f.status === FinanceStatus.PENDING)
-      .reduce((sum, f) => sum + f.amount, 0);
+      .reduce((sum, f) => sum + Number(f.amount || 0), 0);
 
     const pendingQuotes = quotes.filter(q => q.status === 'OPEN').length;
     const pendingOS = serviceOrders.filter(os => os.status === 'ABERTA').length;
@@ -59,14 +61,16 @@ const Dashboard: React.FC<DashboardProps> = ({ showValues, togglePrivacy }) => {
   const chartData = useMemo(() => {
       const last7Days = Array.from({ length: 7 }, (_, i) => {
           const d = new Date();
-          d.setDate(d.getDate() - (6 - i));
-          return d.toISOString().split('T')[0];
+          const offset = 180 * 60000; // Forçar Brasília (UTC-3)
+          const localNow = new Date(d.getTime() - offset);
+          localNow.setDate(localNow.getDate() - (6 - i));
+          return localNow.toISOString().split('T')[0];
       });
 
       return last7Days.map(date => {
           const sales = transactions
             .filter(t => t.createdAt.startsWith(date) && t.type === TransactionType.SALE)
-            .reduce((sum, t) => sum + t.total, 0);
+            .reduce((sum, t) => sum + Number(t.total || 0), 0);
           
           return {
               name: date.split('-').slice(2).join(''), // DD
@@ -78,7 +82,7 @@ const Dashboard: React.FC<DashboardProps> = ({ showValues, togglePrivacy }) => {
 
   const formatCurrency = (val: number) => {
     if (!showValues) return "R$ ••••";
-    return `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `R$ ${Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (
@@ -231,7 +235,7 @@ const Dashboard: React.FC<DashboardProps> = ({ showValues, togglePrivacy }) => {
                     <div>
                       <p className="font-bold text-xs text-slate-700 dark:text-slate-200 line-clamp-1">{tx.productName}</p>
                       <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter mt-0.5">
-                        {new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} &bull; {tx.type === TransactionType.OUT ? 'EXPEDIÇÃO' : tx.paymentMethod}
+                        {new Date(tx.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })} &bull; {tx.type === TransactionType.OUT ? 'EXPEDIÇÃO' : tx.paymentMethod}
                       </p>
                     </div>
                   </div>
@@ -288,6 +292,7 @@ const Dashboard: React.FC<DashboardProps> = ({ showValues, togglePrivacy }) => {
           </div>
         </div>
       </div>
+      <SupportChat />
     </div>
   );
 };

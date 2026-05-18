@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
-import { Transaction, PaymentMethod, StoreSettings } from '../types';
+import { Transaction, PaymentMethod, StoreSettings, Product, TransactionType } from '../types';
 import { 
   Search, 
   Calendar, 
@@ -15,15 +15,28 @@ import {
   CreditCard,
   Banknote,
   QrCode,
-  User as UserIcon
+  User as UserIcon,
+  Pencil
 } from 'lucide-react';
 
 const SalesToday: React.FC = () => {
   const [sales, setSales] = useState<Transaction[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSale, setSelectedSale] = useState<Transaction[] | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingSale, setEditingSale] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ 
+    clientName: '', 
+    paymentMethod: '' as PaymentMethod, 
+    createdAt: '',
+    items: [] as Transaction[],
+    installments: 1,
+    interval: 30
+  });
   const [storeSettings, setStoreSettings] = useState<StoreSettings>({ 
     companyName: '', 
     logoUrl: '',
@@ -37,15 +50,37 @@ const SalesToday: React.FC = () => {
     address: ''
   });
 
+  // Ajuste para pegar a data local correta (evita pular para o dia seguinte após as 21h devido ao UTC)
+  const getLocalDateStr = () => {
+    const now = new Date();
+    // Pega a data local no formato YYYY-MM-DD sem gambiarras de offset
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getLocalDateStr();
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+  const [filterType, setFilterType] = useState<'today' | 'period'>('today');
+
   useEffect(() => {
     fetchSales();
     api.getSettings().then(setStoreSettings);
-  }, []);
+    api.getClients().then(setClients);
+    api.getProducts().then(setProducts);
+  }, [startDate, endDate, filterType]);
 
   const fetchSales = async () => {
     setLoading(true);
     try {
-      const data = await api.getTodaySales();
+      let data;
+      if (filterType === 'today') {
+        data = await api.getTodaySales();
+      } else {
+        data = await api.getSalesByPeriod(startDate, endDate);
+      }
       const filtered = data.filter(t => t.type === 'SALE');
       setSales(filtered);
     } catch (error) {
@@ -65,15 +100,18 @@ const SalesToday: React.FC = () => {
     
     // Convert to array of representative objects
     return Object.values(groups).map(items => {
-      const total = items.reduce((sum, i) => sum + i.total, 0);
+      const total = items.reduce((sum, i) => sum + Number(i.total || 0), 0);
       return {
         id: items[0].id,
         clientName: items[0].clientName || 'Consumidor Final',
         paymentMethod: items[0].paymentMethod || PaymentMethod.CASH,
         createdAt: items[0].createdAt,
         total: total,
+        discount: items.reduce((sum, i) => sum + Number(i.discount || 0), 0),
         itemCount: items.length,
-        items: items
+        items: items,
+        installments: items[0].installments || 1,
+        interval: items[0].interval || 30,
       };
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [sales]);
@@ -88,9 +126,89 @@ const SalesToday: React.FC = () => {
     setShowDetailModal(true);
   };
 
+  const handleOpenEdit = (sale: any) => {
+    setEditingSale(sale);
+    setEditForm({
+      clientName: sale.clientName,
+      paymentMethod: sale.paymentMethod as PaymentMethod,
+      createdAt: new Date(sale.createdAt).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+      items: JSON.parse(JSON.stringify(sale.items)), // Deep clone to avoid direct state mutation
+      installments: sale.installments || 1,
+      interval: sale.interval || 30
+    });
+    setShowEditModal(true);
+  };
+
+  const updateItem = (index: number, key: keyof Transaction, value: any) => {
+    const newItems = [...editForm.items];
+    const item = { ...newItems[index] };
+    
+    // @ts-ignore
+    item[key] = value;
+
+    if (key === 'productId') {
+      const p = products.find(prod => prod.id === value);
+      if (p) {
+        item.productName = p.name;
+        item.unitPrice = p.salePrice;
+      }
+    }
+
+    item.total = Number(item.quantity || 0) * Number(item.unitPrice || 0);
+    newItems[index] = item;
+    setEditForm({ ...editForm, items: newItems });
+  };
+
+  const removeItem = (index: number) => {
+    setEditForm({ ...editForm, items: editForm.items.filter((_, i) => i !== index) });
+  };
+
+  const addItem = () => {
+    const firstProd = products[0];
+    const newItem: Transaction = {
+      id: editingSale.id, // Keep original sale ID
+      productId: firstProd?.id || '',
+      productName: firstProd?.name || '',
+      type: TransactionType.SALE,
+      quantity: 1,
+      unitPrice: firstProd?.salePrice || 0,
+      total: firstProd?.salePrice || 0,
+      paymentMethod: editForm.paymentMethod,
+      clientName: editForm.clientName,
+      createdAt: new Date(editForm.createdAt).toISOString()
+    };
+    setEditForm({ ...editForm, items: [...editForm.items, newItem] });
+  };
+
+  const handleUpdateSale = async () => {
+    if (!editingSale) return;
+    if (editForm.items.length === 0) {
+      alert('A venda deve ter pelo menos um item.');
+      return;
+    }
+
+    try {
+      await api.updateSale(editingSale.id, {
+        clientName: editForm.clientName,
+        paymentMethod: editForm.paymentMethod,
+        createdAt: new Date(editForm.createdAt).toISOString(),
+        items: editForm.items,
+        installments: editForm.installments,
+        interval: editForm.interval
+      });
+      setShowEditModal(false);
+      fetchSales();
+    } catch (error: any) {
+      alert('Erro ao atualizar venda: ' + error.message);
+    }
+  };
+
   const handlePrintReceipt = (items: Transaction[]) => {
-    const total = items.reduce((sum, i) => sum + i.total, 0);
+    const total = items.reduce((sum, i) => sum + Number(i.total || 0), 0);
     const clientName = items[0].clientName || 'Consumidor Final';
+    const client = clients.find(c => c.name.trim().toLowerCase() === clientName.trim().toLowerCase());
+    const clientCnpjStr = client && client.cpf_cnpj ? ` \n <span style="font-size: 11pt; color: #475569;">(CNPJ/CPF: ${client.cpf_cnpj})</span>` : '';
+    
     const date = new Date(items[0].createdAt).toLocaleDateString('pt-BR');
     const time = new Date(items[0].createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const paymentMethod = items[0].paymentMethod || 'DINHEIRO';
@@ -119,15 +237,25 @@ const SalesToday: React.FC = () => {
 
     const totalExtenso = toExtenso(total);
 
-    const itemsHtml = items.map((item, index) => `
-      <tr>
-        <td style="text-align: center;">${index + 1}</td>
-        <td>${item.productName}</td>
-        <td style="text-align: center;">${item.quantity}</td>
-        <td style="text-align: right;">${item.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-        <td style="text-align: right; font-weight: 700;">${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-      </tr>
-    `).join('');
+    const itemsHtml = items.map((item, index) => {
+      const originalTotal = Number(item.total || 0) + Number(item.discount || 0);
+      const originalUnit = originalTotal / (item.quantity || 1);
+      return `
+        <tr>
+          <td style="text-align: center;">${index + 1}</td>
+          <td>
+            <b>${item.productName}</b>
+            ${item.discount > 0 ? `<br/><span style="font-size: 8pt; color: #ef4444;">Desconto: R$ ${item.discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>` : ''}
+          </td>
+          <td style="text-align: center;">${item.quantity}</td>
+          <td style="text-align: right;">
+            ${item.discount > 0 ? `<span style="text-decoration: line-through; font-size: 8pt; color: #94a3b8;">${originalUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span><br/>` : ''}
+            ${item.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </td>
+          <td style="text-align: right; font-weight: 700;">${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+        </tr>
+      `;
+    }).join('');
 
     const logoHtml = storeSettings.logoUrl && !storeSettings.logoUrl.startsWith('icon:') 
       ? `<img src="${storeSettings.logoUrl}" style="max-height: 80px; margin-bottom: 5px;" />` 
@@ -266,7 +394,7 @@ const SalesToday: React.FC = () => {
           <div class="page">
             <div class="header">
               ${logoHtml}
-              <div style="font-size: 16pt; font-weight: 900; color: #1e293b; margin-bottom: 5px; text-transform: uppercase;">${storeSettings.companyName || 'AJ INFORMÁTICA'}</div>
+
               <div class="receipt-title" style="color: #000;">RECIBO</div>
             </div>
 
@@ -282,7 +410,7 @@ const SalesToday: React.FC = () => {
             </div>
 
             <div class="declaracao-container">
-              Recebemos de <b>${clientName.toUpperCase()}</b> a importância total de <br/>
+              Recebemos de <b>${clientName.toUpperCase()}</b>${clientCnpjStr} a importância total de <br/>
               <b style="font-size: 16pt;">R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</b><br/>
               <span style="font-size: 9.5pt; color: #64748b; font-weight: 600;">(${totalExtenso})</span>
             </div>
@@ -305,13 +433,17 @@ const SalesToday: React.FC = () => {
                <div class="pix-section">
                   <div class="label">Pagamento Via PIX (Cópia e Cola)</div>
                   <div class="key">${storeSettings.pixKey || '08.859.294/0001-13'}</div>
-                  <div class="favorecido">Favorecido: ${storeSettings.pixFavorecido || 'AJ INFORMÁTICA'}</div>
+                  <div class="favorecido">Favorecido: ${storeSettings.pixFavorecido || 'Aj Informatica'}</div>
                </div>
  
                <div class="totals-section">
                   <div class="total-item">
                     <span class="label">Subtotal</span>
-                    <span class="value">R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span class="value">R$ ${(items.reduce((sum, i) => sum + Number(i.total || 0) + Number(i.discount || 0), 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div class="total-item" style="color: #ef4444;">
+                    <span class="label" style="color: #ef4444;">Descontos</span>
+                    <span className="value" style="color: #ef4444;">- R$ ${(items.reduce((sum, i) => sum + Number(i.discount || 0), 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div class="total-item">
                     <span class="label">Forma de Pgto</span>
@@ -327,7 +459,7 @@ const SalesToday: React.FC = () => {
             <div class="signature-section">
                <div class="signature-wrap">
                   <div class="signature-line"></div>
-                  <div class="signature-info">${storeSettings.signatureName || 'Alex Santos'}</div>
+                  <div class="signature-info">${storeSettings.signatureName || 'Aj Informatica'}</div>
                </div>
             </div>
  
@@ -352,7 +484,7 @@ const SalesToday: React.FC = () => {
   };
 
   const formatCurrency = (val: number) => {
-    return `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    return `R$ ${Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
   };
 
   return (
@@ -386,9 +518,12 @@ const SalesToday: React.FC = () => {
             <Calendar size={24} />
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Data de Operação</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Período de Operação</p>
             <p className="text-lg font-black text-slate-800 dark:text-white tracking-tight">
-              {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+              {filterType === 'today' 
+                ? new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+                : `${new Date(startDate + 'T00:00:00').toLocaleDateString('pt-BR')} até ${new Date(endDate + 'T00:00:00').toLocaleDateString('pt-BR')}`
+              }
             </p>
           </div>
         </div>
@@ -407,15 +542,51 @@ const SalesToday: React.FC = () => {
             </div>
           </div>
 
-          <div className="relative group max-w-md w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-all" size={18} />
-            <input
-              type="text"
-              placeholder="Pesquisar por cliente ou ID..."
-              className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm font-bold text-slate-700 dark:text-gray-200 transition-all placeholder:text-slate-300"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+            {/* Filtro de Período */}
+            <div className="flex items-center bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => setFilterType('today')}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${filterType === 'today' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                HOJE
+              </button>
+              <button
+                onClick={() => setFilterType('period')}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${filterType === 'period' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                PERÍODO
+              </button>
+            </div>
+
+            {filterType === 'period' && (
+              <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                <span className="text-slate-300 font-black text-[10px]">ATÉ</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+            )}
+
+            <div className="relative group max-w-xs w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-all" size={18} />
+              <input
+                type="text"
+                placeholder="Pesquisar..."
+                className="w-full pl-12 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm font-bold text-slate-700 dark:text-gray-200 transition-all placeholder:text-slate-300"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 
@@ -434,6 +605,7 @@ const SalesToday: React.FC = () => {
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Hora</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pagamento</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Itens</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-rose-400 uppercase tracking-widest text-right">Desconto</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Valor Total</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ações</th>
                 </tr>
@@ -462,11 +634,15 @@ const SalesToday: React.FC = () => {
                          {sale.paymentMethod === PaymentMethod.PIX && <QrCode size={14} className="text-sky-500" />}
                          {sale.paymentMethod === PaymentMethod.CASH && <Banknote size={14} className="text-emerald-500" />}
                          {sale.paymentMethod === PaymentMethod.CARD && <CreditCard size={14} className="text-violet-500" />}
+                         {sale.paymentMethod === PaymentMethod.BOLETO && <FileText size={14} className="text-indigo-500" />}
                          <span className="text-[10px] font-black uppercase tracking-tight text-slate-500">{sale.paymentMethod}</span>
                       </div>
                     </td>
                     <td className="px-6 py-5">
                       <span className="text-xs font-bold text-slate-500">{sale.itemCount} {sale.itemCount === 1 ? 'item' : 'itens'}</span>
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <span className="text-sm font-black text-rose-500 tracking-tighter">{sale.discount > 0 ? `-${formatCurrency(sale.discount)}` : '---'}</span>
                     </td>
                     <td className="px-6 py-5 text-right">
                       <span className="text-base font-black text-slate-800 dark:text-white tracking-tighter">{formatCurrency(sale.total)}</span>
@@ -479,6 +655,13 @@ const SalesToday: React.FC = () => {
                           title="Ver Detalhes"
                         >
                           <Eye size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleOpenEdit(sale)}
+                          className="p-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-600 hover:text-white transition-all shadow-sm"
+                          title="Editar Venda"
+                        >
+                          <Pencil size={16} />
                         </button>
                         <button 
                           onClick={() => handlePrintReceipt(sale.items)}
@@ -504,6 +687,181 @@ const SalesToday: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {showEditModal && editingSale && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setShowEditModal(false)} />
+          <div className="relative bg-white dark:bg-slate-950 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+             <div className="px-8 py-6 border-b border-black/5 bg-amber-500/5 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+                    <Pencil size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Editar Venda</h3>
+                    <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest leading-none mt-1 font-mono">#{editingSale.id.toUpperCase()}</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowEditModal(false)} className="p-3 text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-xl transition-all">
+                  <X size={20} />
+                </button>
+             </div>
+
+             <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Cliente</label>
+                    <input
+                      type="text"
+                      value={editForm.clientName}
+                      onChange={(e) => setEditForm({ ...editForm, clientName: e.target.value })}
+                      className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm font-black text-slate-800 dark:text-white outline-none focus:ring-4 focus:ring-amber-500/10 transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Data e Hora</label>
+                    <input
+                      type="datetime-local"
+                      value={editForm.createdAt}
+                      onChange={(e) => setEditForm({ ...editForm, createdAt: e.target.value })}
+                      className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm font-black text-slate-800 dark:text-white outline-none focus:ring-4 focus:ring-amber-500/10 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Itens da Venda</label>
+                    <button 
+                      onClick={addItem}
+                      className="text-[10px] font-black text-indigo-600 uppercase tracking-wider hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all"
+                    >
+                      + Adicionar Item
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {editForm.items.map((item, idx) => (
+                      <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center gap-3 group">
+                        <div className="flex-1 min-w-0">
+                          <select
+                            value={item.productId}
+                            onChange={(e) => updateItem(idx, 'productId', e.target.value)}
+                            className="w-full bg-transparent text-sm font-black text-slate-800 dark:text-white outline-none cursor-pointer"
+                          >
+                            {products.map(p => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="w-20">
+                          <input 
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
+                            className="w-full bg-white dark:bg-slate-800 px-2 py-1.5 rounded-lg text-xs font-black text-center outline-none border border-slate-200 dark:border-slate-700"
+                          />
+                        </div>
+                        <div className="w-28 text-right">
+                          <input 
+                            type="number"
+                            value={item.unitPrice}
+                            onChange={(e) => updateItem(idx, 'unitPrice', Number(e.target.value))}
+                            className="w-full bg-white dark:bg-slate-800 px-2 py-1.5 rounded-lg text-xs font-black text-right outline-none border border-slate-200 dark:border-slate-700"
+                          />
+                        </div>
+                        <div className="w-28 text-right font-black text-indigo-600 text-sm">
+                          {formatCurrency(item.total)}
+                        </div>
+                        <button 
+                          onClick={() => removeItem(idx)}
+                          className="p-2 text-slate-300 hover:text-rose-500 transition-all"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Forma de Pagamento</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { icon: <Banknote size={16} />, label: 'DINHEIRO', value: PaymentMethod.CASH },
+                      { icon: <QrCode size={16} />, label: 'PIX', value: PaymentMethod.PIX },
+                      { icon: <CreditCard size={16} />, label: 'CARTÃO', value: PaymentMethod.CARD },
+                      { icon: <FileText size={16} />, label: 'BOLETO', value: PaymentMethod.BOLETO }
+                    ].map((method) => (
+                      <button
+                        key={method.value}
+                        onClick={() => setEditForm({ ...editForm, paymentMethod: method.value })}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
+                          editForm.paymentMethod === method.value 
+                          ? 'border-amber-500 bg-amber-50 text-amber-600' 
+                          : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-400 hover:border-slate-200'
+                        }`}
+                      >
+                        {method.icon}
+                        <span className="text-[9px] font-black">{method.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {editForm.paymentMethod === PaymentMethod.BOLETO && (
+                  <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Nº Parcelas</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={editForm.installments}
+                        onChange={(e) => setEditForm({ ...editForm, installments: parseInt(e.target.value) || 1 })}
+                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm font-black text-slate-800 dark:text-white outline-none focus:ring-4 focus:ring-amber-500/10 transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Prazo (Dias)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editForm.interval}
+                        onChange={(e) => setEditForm({ ...editForm, interval: parseInt(e.target.value) || 0 })}
+                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm font-black text-slate-800 dark:text-white outline-none focus:ring-4 focus:ring-amber-500/10 transition-all"
+                      />
+                    </div>
+                  </div>
+                )}
+             </div>
+
+             <div className="p-8 bg-slate-50 dark:bg-slate-950 flex items-center justify-between border-t border-white/5">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Novo Total</span>
+                  <span className="text-2xl font-black text-slate-800 dark:text-white tracking-tighter">
+                    {formatCurrency(editForm.items.reduce((sum, item) => sum + item.total, 0))}
+                  </span>
+                </div>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setShowEditModal(false)}
+                    className="px-8 py-5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-500 hover:text-slate-800 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleUpdateSale}
+                    className="px-8 py-5 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-amber-500/20"
+                  >
+                    Salvar Alterações
+                  </button>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
 
       {/* Detail Modal */}
       {showDetailModal && selectedSale && (
@@ -534,7 +892,7 @@ const SalesToday: React.FC = () => {
                   <div className="space-y-1 text-right">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Operacional</p>
                     <p className="text-base font-black text-slate-800 dark:text-white tracking-tight">
-                      {new Date(selectedSale[0].createdAt).toLocaleString('pt-BR')}
+                      {new Date(selectedSale[0].createdAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
                     </p>
                   </div>
                 </div>
@@ -542,20 +900,26 @@ const SalesToday: React.FC = () => {
                 <div className="space-y-3">
                   <div className="px-4 py-2 bg-slate-50 dark:bg-slate-950 rounded-xl grid grid-cols-12 text-[9px] font-black text-slate-400 uppercase tracking-widest border border-slate-100 dark:border-white/5">
                     <span className="col-span-1">#</span>
-                    <span className="col-span-6">Produto / Serviço</span>
+                    <span className="col-span-5">Produto / Serviço</span>
                     <span className="col-span-1 text-center">Qtd</span>
-                    <span className="col-span-2 text-right">Unitário</span>
+                    <span className="col-span-1 text-right">Original</span>
+                    <span className="col-span-2 text-right text-rose-500">Desconto</span>
                     <span className="col-span-2 text-right">Subtotal</span>
                   </div>
-                  {selectedSale.map((item, index) => (
-                    <div key={index} className="px-4 py-4 bg-white/5 rounded-2xl grid grid-cols-12 text-sm items-center border border-white/5">
-                      <span className="col-span-1 font-bold text-slate-400">{index + 1}</span>
-                      <span className="col-span-6 font-black text-slate-800 dark:text-white truncate tracking-tight">{item.productName}</span>
-                      <span className="col-span-1 text-center font-bold">{item.quantity}</span>
-                      <span className="col-span-2 text-right text-slate-500">{formatCurrency(item.unitPrice)}</span>
-                      <span className="col-span-2 text-right font-black text-indigo-600">{formatCurrency(item.total)}</span>
-                    </div>
-                  ))}
+                  {selectedSale.map((item, index) => {
+                    const originalTotal = Number(item.total || 0) + Number(item.discount || 0);
+                    const originalUnit = originalTotal / (item.quantity || 1);
+                    return (
+                      <div key={index} className="px-4 py-4 bg-white/5 rounded-2xl grid grid-cols-12 text-sm items-center border border-white/5 hover:bg-white/10 transition-colors">
+                        <span className="col-span-1 font-bold text-slate-400">{index + 1}</span>
+                        <span className="col-span-5 font-black text-slate-800 dark:text-white truncate tracking-tight">{item.productName}</span>
+                        <span className="col-span-1 text-center font-bold">{item.quantity}</span>
+                        <span className="col-span-1 text-right text-slate-400 text-xs line-through">{formatCurrency(originalUnit)}</span>
+                        <span className="col-span-2 text-right text-rose-500 font-bold">{formatCurrency(item.discount || 0)}</span>
+                        <span className="col-span-2 text-right font-black text-indigo-600">{formatCurrency(item.total)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
              </div>
 
